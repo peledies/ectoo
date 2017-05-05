@@ -51,3 +51,36 @@ Available options
   address           List the IP address of an instance with the given tags
   describe          Dump the entire description of an instance with the given tags
 ```
+
+# Installation
+
+## OS X Install With Homebrew
+
+```
+brew tap peledies/tap
+brew install ectoo
+```
+
+
+## Linux Install
+
+```
+sudo git clone https://github.com/peledies/ectoo.git /opt/ectoo
+```
+
+##### Create Symbolic Link to `ectoo`
+```
+ln -s /opt/ectoo/ectoo /usr/local/bin/ectoo
+```
+
+##### Add execute permissions to `ectoo`
+```
+sudo chmod +x /opt/ectoo/ectoo
+```
+
+##### Updating
+
+```
+cd /opt/ectoo && sudo git fetch --all && sudo git reset --hard origin/master
+ && cd -
+```
