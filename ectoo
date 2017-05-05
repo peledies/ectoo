@@ -1,0 +1,200 @@
+#!/bin/bash
+
+gold=$(tput setaf 3)
+magenta=$(tput setaf 5)
+cyan=$(tput setaf 6)
+red=$(tput setaf 1)
+default=$(tput sgr0)
+
+info_box() {
+  NUM=$((${#1} + 4))
+  echo "${cyan}"
+
+  # print the top of the info box
+  eval printf %.0s# '{1..'"${NUM}"\}; echo
+
+  # print the middle of the info box
+  echo "# $1 #"
+
+  # print the bottom of the info box
+  eval printf %.0s# '{1..'"${NUM}"\}; echo
+
+  echo "${default}"
+}
+
+INSTANCE="Staging"
+RUN="describe"
+
+DEFAULT_PROJECT="Project Not Defined"
+DEFAULT_PROFILE="default"
+
+for i in "$@"
+do
+case $i in
+    -i=*|--instance=*)
+    INSTANCE="${i#*=}"
+    shift # past argument=value
+    ;;
+    -r=*|--run=*)
+    RUN="${i#*=}"
+    shift # past argument=value
+    ;;
+    -p=*|--profile=*)
+    PROFILE="${i#*=}"
+    shift # past argument=value
+    ;;
+    -j=*|--project=*)
+    PROJECT="${i#*=}"
+    shift # past argument=value
+    ;;
+    -h|--help)
+    HELP=true
+    shift # past argument=value
+    ;;
+    -c|--commands)
+    COMMAND_HELP=true
+    shift # past argument=value
+    ;;
+    --default)
+    DEFAULT=YES
+    shift # past argument with no value
+    ;;
+    *)
+            # unknown option
+    ;;
+esac
+done
+
+if [ "$COMMAND_HELP" = true ]
+then
+  info_box "-- EcToo Command List --"
+  echo -e "Available Commands\n"
+  echo "  ${gold}start${default}             Start an instance with the given tags"
+  echo "  ${gold}stop${default}              Stop an instance with the given tags"
+  echo "  ${gold}state${default}             Display the state of an instance with the given tags [running/stopped]"
+  echo "  ${gold}address${default}           List the IP address of an instance with the given tags"
+  echo "  ${gold}describe${default}          Dump the entire description of an instance with the given tags"
+  exit 0;
+fi
+
+if [ "$HELP" = true ]
+then
+  info_box "-- EcToo Help --"
+  echo -e "Example Usage:\n\n  ${gold}ectoo -i=Production -r=describe -p=default -j=Tracktum${default}\n"
+  echo -e "Available Options\n"
+  echo "  ${gold}-j | --project${default}        The 1st part of your ec2 tag"
+  echo "  ${gold}-i | --instance${default}       The 2nd part of your ec2 tag ie. Production/Staging"
+  echo "  ${gold}-r | --run${default}            Specifiy which command to run"
+  echo "  ${gold}-c | --commands${default}       List available commands to run"
+  echo "  ${gold}-p | --profile${default}        Specify the configured profile to use from ~/.aws/config"
+  echo "  ${gold}-h | --help${default}           Show this help resource"
+  exit 0;
+fi
+
+if [ -z "$PROFILE" ]
+then
+      PROFILE=$DEFAULT_PROFILE
+fi
+
+if [ -z "$PROJECT" ]
+then
+      PROJECT=$DEFAULT_PROJECT
+fi
+
+info_box "AWS EC2 Action"
+
+echo "Project   = ${PROJECT}"
+echo "Instance  = ${INSTANCE}"
+echo "Run       = ${RUN}"
+echo "Profile   = ${PROFILE}"
+echo ""
+
+describe() {
+  aws ec2 describe-instances --filters "Name=tag:Name,Values=${PROJECT} ${INSTANCE}" --profile $PROFILE
+}
+
+getInstanceId() {
+  INSTANCEID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=${PROJECT} ${INSTANCE}" --query 'Reservations[*].Instances[*].InstanceId' --output text --profile ${PROFILE})
+}
+
+productionCheck() {
+  if [ "$INSTANCE" == "Production" ]
+  then
+    read -p "${cyan}Are you sure you want to take this action: ${red}${RUN}${cyan} on ${red}PRODUCTION${cyan}: [y/n]${gold} " answer </dev/tty
+      case "${answer}" in
+          [yY])
+            stop;;
+          [nN])
+            exit 0;;
+      esac
+  else
+    stop
+  fi
+}
+
+stop() {
+  getInstanceId
+  aws ec2 stop-instances --instance-ids $INSTANCEID --profile $PROFILE
+}
+
+start() {
+  getInstanceId
+  aws ec2 start-instances --instance-ids $INSTANCEID --profile $PROFILE
+  hostsFileUpdate
+}
+
+state() {
+  aws ec2 describe-instances --filters "Name=tag:Name,Values=${PROJECT} ${INSTANCE}" --query 'Reservations[*].Instances[*].State' --output text --profile $PROFILE
+}
+
+address() {
+  aws ec2 describe-instances --filters "Name=tag:Name,Values=${PROJECT} ${INSTANCE}" --query 'Reservations[*].Instances[*].PublicIpAddress' --output text --profile $PROFILE
+  hostsFileUpdate
+}
+
+hostsFileUpdate() {
+  read -p "${cyan}Do you want to update your ${red}/etc/hosts${cyan} file: [y/n]${gold} " answer </dev/tty
+    case "${answer}" in
+        [yY])
+          updateEtcHosts;;
+        [nN])
+          exit 0;;
+    esac
+}
+
+updateEtcHosts() {
+  instance_lower=$(echo "$INSTANCE" | tr '[:upper:]' '[:lower:]')
+  project_lower=$(echo "$PROJECT" | tr '[:upper:]' '[:lower:]')
+
+  local new_address=$(address)
+  if grep -q "${project_lower}-${instance_lower}" /etc/hosts; then
+    sudo sed -i.bak "s/.*${project_lower}-${instance_lower}.*/${new_address} tracktum-production/" /etc/hosts
+  else
+    printf "\n${new_address} ${project_lower}-${instance_lower}" | sudo tee -a /etc/hosts > /dev/null
+  fi
+
+  echo "${cyan}Instance can now be reached at ${magenta}http://${project_lower}-${instance_lower}${cyan} locally${default}"
+}
+
+case "${RUN}" in
+
+    describe)
+      describe
+      ;;
+
+    state)
+      state
+      ;;
+
+    stop)
+      productionCheck
+      ;;
+  
+    start)
+      start
+      ;;
+
+    address)
+      address
+      ;;
+esac
