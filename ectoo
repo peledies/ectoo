@@ -140,7 +140,6 @@ stop() {
 start() {
   getInstanceId
   aws ec2 start-instances --instance-ids $INSTANCEID --profile $PROFILE
-  hostsFileUpdate
 }
 
 state() {
@@ -149,7 +148,6 @@ state() {
 
 address() {
   aws ec2 describe-instances --filters "Name=tag:Name,Values=${PROJECT} ${INSTANCE}" --query 'Reservations[*].Instances[*].PublicIpAddress' --output text --profile $PROFILE
-  hostsFileUpdate
 }
 
 hostsFileUpdate() {
@@ -168,7 +166,7 @@ updateEtcHosts() {
 
   local new_address=$(address)
   if grep -q "${project_lower}-${instance_lower}" /etc/hosts; then
-    sudo sed -i.bak "s/.*${project_lower}-${instance_lower}.*/${new_address} tracktum-production/" /etc/hosts
+    sudo sed -i.bak "s/.*${project_lower}-${instance_lower}.*/${new_address} ${project_lower}-${instance_lower}/" /etc/hosts
   else
     printf "\n${new_address} ${project_lower}-${instance_lower}" | sudo tee -a /etc/hosts > /dev/null
   fi
@@ -192,9 +190,11 @@ case "${RUN}" in
   
     start)
       start
+      hostsFileUpdate
       ;;
 
     address)
       address
+      hostsFileUpdate
       ;;
 esac
