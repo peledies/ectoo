@@ -147,7 +147,17 @@ state() {
 }
 
 address() {
-  aws ec2 describe-instances --filters "Name=tag:Name,Values=${PROJECT} ${INSTANCE}" --query 'Reservations[*].Instances[*].PublicIpAddress' --output text --profile $PROFILE
+  while true;
+    do
+      ADDRESS=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=${PROJECT} ${INSTANCE}" --query 'Reservations[*].Instances[*].PublicIpAddress' --output text --profile $PROFILE)
+      if [ -z "$ADDRESS" ]; then
+        echo "waiting for address."
+      else
+        echo -e "$ADDRESS"
+        break
+      fi
+      sleep 10;
+    done
 }
 
 hostsFileUpdate() {
@@ -165,6 +175,7 @@ updateEtcHosts() {
   project_lower=$(echo "$PROJECT" | tr '[:upper:]' '[:lower:]')
 
   local new_address=$(address)
+
   if grep -q "${project_lower}-${instance_lower}" /etc/hosts; then
     sudo sed -i.bak "s/.*${project_lower}-${instance_lower}.*/${new_address} ${project_lower}-${instance_lower}/" /etc/hosts
   else
