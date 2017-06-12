@@ -201,6 +201,7 @@ case "${RUN}" in
   
     start)
       start
+      address
       hostsFileUpdate
       ;;
 
